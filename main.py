@@ -3,108 +3,136 @@
 import ccxt
 import datetime
 import time
-import os
-import sys
+
+import numpy as np
 import simplejson as json
-# import random
-# import threading
 
 COLOR_RESET = "\033[0;0m"
 COLOR_GREEN = "\033[0;32m"
 COLOR_RED = "\033[1;31m"
 COLOR_BLUE = "\033[1;34m"
 COLOR_WHITE = "\033[1;37m"
-LOGFILE=""
+LOGFILE = ""
 
-class Oreder_Info:
+
+class Order_Info:
     def __init__(self):
-        self.done=False
-        self.side=None
-        self.id=0
+        self.done = False
+        self.side = None
+        self.id = 0
+
 
 class Grid_trader:
-    order_list=[]
+    order_list = []
 
-    def __init__(self,exchange,symbol,grid_level=0,lower_price=0.0,upper_price=0.0,amount=0):
+    def __init__(self, exchange, symbol, grid_level=0, mid_price=-1.0, price_step=0.0, amount=0):
         self.symbol = symbol
-        self.exchange=exchange
-        self.order_min_inteval= self.exchange.markets[self.symbol]["info"]["priceIncrement"]
-        self.grid_level=grid_level
-        self.upper_price=upper_price
-        self.lower_price=lower_price
-        self.amount=amount
-        self.inteval_profit=(self.upper_price-self.lower_price) / self.grid_level
+        self.exchange = exchange
+        self.order_min_inteval = self.exchange.markets[self.symbol]["info"]["priceIncrement"]
+        self.grid_level = grid_level
+        self.mid_price = mid_price
+        self.amount = amount
+        self.inteval_profit = price_step
+        self.max_exp = 5
         pass
 
+    def reset(self):
+        ohlcvs = self.exchange.fetchOHLCV(self.symbol, timeframe='1m', limit=3)
+        if len(ohlcvs) > 0:
+            current_high = np.max([ohlcv[2] for ohlcv in ohlcvs])
+            current_low = np.min([ohlcv[3] for ohlcv in ohlcvs])
+            if current_low < self.mid_price < current_high:
+                return
+            self.mid_price = ohlcvs[-1][4]
+            self.send_request('clear_open_order')
+            self.place_order_init()
+            log(f'Reset at mid level {self.mid_price}')
+
     def place_order_init(self):
-        #start cal level and place grid oreder
-        for i in range(self.grid_level + 1): #  n+1 lines make n grid
-            price = self.lower_price + i * self.inteval_profit
-            bid_price, ask_price = self.send_request("get_bid_ask_price")
-            order = Oreder_Info()
-            if  price < ask_price : 
-                order.id = self.send_request("place_order","buy",price)
-                log("place buy order id = " + str(order.id) + " in "+ str(price))
-            else:
-                order.id = self.send_request("place_order","sell",price)
-                log("place sell order id = " + str(order.id) + " in "+ str(price))
-            self.order_list.append(order)
-    
+        # start cal level and place grid order
+        bid_price, ask_price = self.send_request("get_bid_ask_price")
+        for sign in [1, -1]:
+            for i in range(1, self.grid_level + 1):  # n+1 lines make n grid
+                order = Order_Info()
+                if self.mid_price <= 0:
+                    self.mid_price = (bid_price + ask_price) / 2
+                price = self.mid_price + i * self.inteval_profit * sign
+                if price < ask_price:
+                    order.id = self.send_request("place_order", "buy", price)
+                    log("place buy order id = " + str(order.id) + " in " + str(price))
+                else:
+                    order.id = self.send_request("place_order", "sell", price)
+                    log("place sell order id = " + str(order.id) + " in " + str(price))
+                self.order_list.append(order)
+
     def loop_job(self):
         for order in self.order_list:
-            order_info = self.send_request("get_order",order.id)
+            order_info = self.send_request("get_order", order.id)
             side = order_info["side"]
             if order_info["status"] == "closed":
-                new_order_price = 0.0
                 old_order_id = order_info["id"]
-                bid_price, ask_price = self.send_request("get_bid_ask_price")
-                msg = side + " order id : " + str(old_order_id)+" : " + str(order_info["price"]) + " completed , put "
-                if side == "buy" :
-                    new_order_price = float(order_info["price"]) + self.inteval_profit 
-                    order.id = self.send_request("place_order","sell",new_order_price)
+                msg = side + " order id : " + str(old_order_id) + " : " + str(order_info["price"]) + " completed , put "
+                if side == "buy":
+                    new_order_price = float(order_info["price"]) + self.inteval_profit
+                    new_order_id = self.send_request("place_order", "sell", new_order_price)
                     msg = msg + "sell"
                     log(msg)
                 else:
                     new_order_price = float(order_info["price"]) - self.inteval_profit
-                    order.id = self.send_request("place_order","buy",new_order_price)
+                    new_order_id = self.send_request("place_order", "buy", new_order_price)
                     msg = msg + "buy"
-                msg = msg + " order id : " + str(order.id) + " : " + str(new_order_price)
+                if new_order_id is not None:
+                    order.id = new_order_id
+                    msg = msg + " order id : " + str(new_order_id) + " : " + str(new_order_price)
+                else:
+                    msg = msg + " order not updated due to limitation"
                 log(msg)
 
-    def send_request(self,task,input1=None,input2=None):
+    def send_request(self, task, input1=None, input2=None):
         tries = 3
         for i in range(tries):
+            positions = self.exchange.fetch_positions()
+            positions = [pos for pos in positions if pos['symbol'] == self.symbol]
+            current_exp = np.sum([float(pos['info']['netSize']) for pos in positions])
             try:
                 if task == "get_bid_ask_price":
-                    ticker =self.exchange.fetch_ticker(self.symbol)
-                    return ticker["bid"],  ticker["ask"]
+                    ticker = self.exchange.fetch_ticker(self.symbol)
+                    return ticker["bid"], ticker["ask"]
 
                 elif task == "get_order":
                     return self.exchange.fetchOrder(input1)["info"]
 
+                elif task == 'clear_open_order':
+                    self.exchange.cancelAllOrders()
+                    self.order_list = []
+
                 elif task == "place_order":
-                    #send_request(self,task,input1=side,input2=price)
                     side = input1
                     price = input2
-                    orderid=0
-                    if side =="buy":
-                        orderid = self.exchange.create_limit_buy_order(self.symbol,self.amount,price )["info"]["id"]
+                    if side == "buy":
+                        if current_exp > self.max_exp:
+                            log(f'Current exposure {current_exp} is too big.')
+                            return None
+                        orderid = self.exchange.create_limit_buy_order(self.symbol, self.amount, price)["info"]["id"]
                     else:
-                        orderid = self.exchange.create_limit_sell_order(self.symbol,self.amount,price )["info"]["id"]
+                        if current_exp < -self.max_exp:
+                            log(f'Current exposure {current_exp} is too big.')
+                            return None
+                        orderid = self.exchange.create_limit_sell_order(self.symbol, self.amount, price)["info"]["id"]
                     return orderid
 
                 else:
                     return None
             except ccxt.NetworkError as e:
-                if i < tries - 1: # i is zero indexed
-                    log("NetworkError , try last "+str(i) +"chances" + str(e))
+                if i < tries - 1:  # i is zero indexed
+                    log("NetworkError , try last " + str(i) + "chances" + str(e))
                     time.sleep(0.5)
                     continue
                 else:
                     log(str(e))
                     raise
             except ccxt.ExchangeError as e:
-                if i < tries - 1: # i is zero indexed
+                if i < tries - 1:  # i is zero indexed
                     log(str(e))
                     time.sleep(0.5)
                     continue
@@ -112,6 +140,7 @@ class Grid_trader:
                     log(str(e))
                     raise
             break
+
 
 def log(msg):
     timestamp = datetime.datetime.now().strftime("%b %d %Y %H:%M:%S ")
@@ -124,14 +153,16 @@ def log(msg):
     except:
         pass
 
-def read_setting():
-        with open('setting.json') as json_file:
-            return json.load(json_file)
-             
-config = read_setting()
-LOGFILE= config["LOGFILE"]
 
-exchange  = ccxt.ftx({
+def read_setting():
+    with open('setting.json') as json_file:
+        return json.load(json_file)
+
+
+config = read_setting()
+LOGFILE = config["LOGFILE"]
+
+exchange = ccxt.ftx({
     'verbose': False,
     'apiKey': config["apiKey"],
     'secret': config["secret"],
@@ -143,9 +174,16 @@ exchange  = ccxt.ftx({
 
 exchange_markets = exchange.load_markets()
 
-main_job = Grid_trader(exchange,config["symbol"],config["grid_level"],config["lower_price"],config["upper_price"],config["amount"])
-main_job.place_order_init()
+main_job = Grid_trader(exchange, config["symbol"], config["grid_level"], config["mid_price"], config["price_step"],
+                       config["amount"])
+# main_job.place_order_init()
 while True:
-    print("Loop in :",datetime.datetime.now())
-    main_job.loop_job()
-    time.sleep(1)
+    try:
+        main_job.reset()
+        print("Loop in :", datetime.datetime.now())
+        main_job.loop_job()
+        time.sleep(10)
+    except ccxt.ExchangeError as e:
+        log(str(e))
+        time.sleep(60 * 5)
+        continue
