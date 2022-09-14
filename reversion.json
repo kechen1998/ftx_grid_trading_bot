@@ -1,0 +1,9 @@
+{
+  "LOGFILE":"ftx.log",
+  "apiKey":"5DkwKLPwVjcaJIct6u_p9ap50WzNd57yVGRxFbfm",
+  "secret":"V4YkwAq7TKYwDvGvMAtqAJZDHTZM8B5pDHsuNWJ0",
+  "sub_account":"Bot",
+  "symbol": ["SOL/USD:USD", "BTC/USD:USD", "XRP/USD:USD", "ETH/USD:USD", "AVAX/USD:USD"],
+  "amount":50.0,
+  "step": 30.0
+}
