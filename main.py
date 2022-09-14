@@ -37,7 +37,7 @@ class Grid_trader:
         pass
 
     def reset(self):
-        ohlcvs = self.exchange.fetchOHLCV(self.symbol, timeframe='1m', limit=3)
+        ohlcvs = self.exchange.fetchOHLCV(self.symbol, timeframe='1h', limit=3)
         if len(ohlcvs) > 0:
             current_high = np.max([ohlcv[2] for ohlcv in ohlcvs])
             current_low = np.min([ohlcv[3] for ohlcv in ohlcvs])
@@ -183,7 +183,7 @@ while True:
         print("Loop in :", datetime.datetime.now())
         main_job.loop_job()
         time.sleep(10)
-    except ccxt.ExchangeError as e:
+    except ccxt.BaseError as e:
         log(str(e))
         time.sleep(60 * 5)
         continue
