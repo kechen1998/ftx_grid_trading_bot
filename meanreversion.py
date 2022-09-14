@@ -47,10 +47,10 @@ class Reversion_trader:
             df.loc[symbol, 'ZScore'] = ret/std
         df['ZScore'] = df['ZScore'].astype(float)
         df['DesiredPos'] = 0
-        df.loc[df['ZScore'].nlargest(2).index, 'DesiredPos'] += self.target_exposure
-        df.loc[df['ZScore'].nsmallest(2).index, 'DesiredPos'] -= self.target_exposure
-        df.loc[df['ZScore'].nlargest(1).index, 'DesiredPos'] += self.target_exposure
-        df.loc[df['ZScore'].nsmallest(1).index, 'DesiredPos'] -= self.target_exposure
+        df.loc[df['ZScore'].nlargest(2).index, 'DesiredPos'] -= self.target_exposure
+        df.loc[df['ZScore'].nsmallest(2).index, 'DesiredPos'] += self.target_exposure
+        df.loc[df['ZScore'].nlargest(1).index, 'DesiredPos'] -= self.target_exposure
+        df.loc[df['ZScore'].nsmallest(1).index, 'DesiredPos'] += self.target_exposure
 
         for symbol in self.symbols:
             bid_price, ask_price = self.send_request("get_bid_ask_price", symbol)
