@@ -19,43 +19,50 @@ LOGFILE = ""
 class TrendTrader:
     order_list = []
 
-    def __init__(self, exchange, symbols, amount=0):
+    def __init__(self, exchange, symbols, amount=0, update_exposure=10.):
         self.symbols = symbols
         self.exchange = exchange
         self.exposure = amount
         self.resolution = '1h'
+        self.desired_pos = {}
+        self.update_exposure = update_exposure
         pass
 
-    def loop_job(self):
+    def calculate_desired_pos(self):
+        self.send_request('clear_open_order')
+        btc_data = self.send_request("ohlcv", 'BTC-PERP')
+        df_btc = pd.DataFrame(btc_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']).set_index(
+            'timestamp')
+        for symbol in self.symbols:
+            ohlcv_list = self.send_request("ohlcv", symbol)
+            df_temp = pd.DataFrame(ohlcv_list,
+                                   columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']).set_index(
+                'timestamp')
+            mcad = ta.trend.macd(np.log(df_temp['close'] / df_btc['close'])).iloc[-1]
+            self.desired_pos[symbol] = self.exposure * (1 if mcad > 0 else -1)
+
+    def update_pos(self):
         self.send_request('clear_open_order')
         position_list = self.send_request("get_pos")
-        btc_data = self.send_request("ohlcv", 'BTC-PERP')
-        df_btc = pd.DataFrame(btc_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']).set_index('timestamp')
-        df = pd.DataFrame(index=self.symbols, columns=['DesiredPos'])
+        exposures = {}
         for symbol in self.symbols:
             positions = [pos for pos in position_list if pos['symbol'] == symbol]
-            current_exp = np.sum([float(pos['info']['netSize']) for pos in positions])
-            df.loc[symbol, 'Exposure'] = current_exp
-            ohlcv_list = self.send_request("ohlcv", symbol)
-            df_temp = pd.DataFrame(ohlcv_list, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']).set_index('timestamp')
-            mcad = ta.trend.macd(np.log(df_temp['close']/df_btc['close'])).iloc[-1]
-            df.loc[symbol, 'DesiredPos'] = 1 if mcad > 0 else -1
-
-        df['DesiredPos'] *= self.exposure
+            exposures[symbol] = np.sum([float(pos['info']['netSize']) for pos in positions])
 
         for symbol in self.symbols:
             bid_price, ask_price = self.send_request("get_bid_ask_price", symbol)
             side = 'buy'
             target_price = bid_price
-            current_exp = df.loc[symbol, 'Exposure'] * (bid_price+ask_price)/2
-            dPos = df.loc[symbol, 'DesiredPos'] - current_exp
-            msg = f"{symbol} desired position: {df.loc[symbol, 'DesiredPos']}, current position {current_exp}"
+            current_exp = exposures[symbol] * (bid_price+ask_price)/2
+            d_pos = self.desired_pos[symbol] - current_exp
+            msg = f"{symbol} desired position: {self.desired_pos[symbol]}, current position {current_exp}"
             log(msg)
-            if dPos < 0:
+            if d_pos < 0:
                 side = 'sell'
                 target_price = ask_price
             try:
-                self.send_request("place_order", symbol, side, target_price, np.abs(dPos)/target_price)
+                pos_usd = np.minimum(np.abs(d_pos), self.update_exposure)
+                self.send_request("place_order", symbol, side, target_price, pos_usd/target_price)
             except ccxt.ExchangeError as e:
                 log(str(e))
                 continue
@@ -135,12 +142,15 @@ exchange = ccxt.ftx({
 
 exchange_markets = exchange.load_markets()
 
-main_job = TrendTrader(exchange, config["symbol"], config["amount"])
+main_job = TrendTrader(exchange, config["symbol"], config["amount"], config["update_exposure"])
+main_job.calculate_desired_pos()
 while True:
     try:
         if np.mod(datetime.datetime.now().minute, 15) == 0:
             print("Loop in :", datetime.datetime.now())
-            main_job.loop_job()
+            if datetime.datetime.now().minute == 0:
+                main_job.calculate_desired_pos()
+            main_job.update_pos()
     except ccxt.BaseError as e:
         log(str(e))
         pass
