@@ -4,5 +4,6 @@
   "secret":"V4YkwAq7TKYwDvGvMAtqAJZDHTZM8B5pDHsuNWJ0",
   "sub_account":"Bot",
   "symbol": ["SOL/USD:USD", "FTT/USD:USD", "BNB/USD:USD", "ETH/USD:USD", "AVAX/USD:USD"],
-  "amount":100.0
+  "amount":100.0,
+  "update_exposure":50.0
 }
