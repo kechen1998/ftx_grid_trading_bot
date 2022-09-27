@@ -155,7 +155,7 @@ def log(msg):
 
 
 def read_setting():
-    with open('setting.json') as json_file:
+    with open('grid.json') as json_file:
         return json.load(json_file)
 
 

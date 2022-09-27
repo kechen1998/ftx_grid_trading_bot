@@ -3,7 +3,7 @@
 import ccxt
 import datetime
 import time
-
+from scipy import stats
 import numpy as np
 import pandas as pd
 import simplejson as json
@@ -29,7 +29,7 @@ class Reversion_trader:
     def __init__(self, exchange, symbols, amount=0, step=0):
         self.symbols = symbols
         self.exchange = exchange
-        self.target_exposure = amount
+        self.exposure_cap = amount
         self.d_position = step
         pass
 
@@ -47,10 +47,7 @@ class Reversion_trader:
             df.loc[symbol, 'ZScore'] = ret/std
         df['ZScore'] = df['ZScore'].astype(float)
         df['DesiredPos'] = 0
-        df.loc[df['ZScore'].nlargest(2).index, 'DesiredPos'] -= self.target_exposure
-        df.loc[df['ZScore'].nsmallest(2).index, 'DesiredPos'] += self.target_exposure
-        df.loc[df['ZScore'].nlargest(1).index, 'DesiredPos'] -= self.target_exposure
-        df.loc[df['ZScore'].nsmallest(1).index, 'DesiredPos'] += self.target_exposure
+        df['DesiredPos'] = -np.maximum(-self.exposure_cap, np.minimum(self.exposure_cap, stats.zscore(df['ZScore'])*self.d_position*2))
 
         for symbol in self.symbols:
             bid_price, ask_price = self.send_request("get_bid_ask_price", symbol)
@@ -144,10 +141,10 @@ exchange = ccxt.ftx({
 
 exchange_markets = exchange.load_markets()
 
-main_job = Reversion_trader(exchange, config["symbol"], config["amount"], config['step'])
+main_job = Reversion_trader(exchange, config["symbol"], config["exposure_cap"], config['step'])
 while True:
     try:
-        if np.mod(datetime.datetime.now().minute, 5) == 0:
+        if np.mod(datetime.datetime.now().minute, 15) == 0:
             print("Loop in :", datetime.datetime.now())
             main_job.loop_job()
     except ccxt.BaseError as e:

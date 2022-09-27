@@ -3,7 +3,7 @@
   "apiKey":"5DkwKLPwVjcaJIct6u_p9ap50WzNd57yVGRxFbfm",
   "secret":"V4YkwAq7TKYwDvGvMAtqAJZDHTZM8B5pDHsuNWJ0",
   "sub_account":"Bot",
-  "symbol": ["SOL/USD:USD", "FTT/USD:USD", "BNB/USD:USD", "ETH/USD:USD", "AVAX/USD:USD"],
+  "symbol": ["SOL/USD:USD", "FTT/USD:USD", "BNB/USD:USD", "ETH/USD:USD", "AVAX/USD:USD", "ATOM/USD:USD", "APE/USD:USD"],
   "amount":100.0,
   "update_exposure":50.0
 }
