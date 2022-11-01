@@ -1,0 +1,9 @@
+{
+  "LOGFILE":"ftx.log",
+  "apiKey":"71jGTT2ZT9B1ZP_2aSW3sC3_o9iTYlDON7zRdR_8",
+  "secret":"RwslNpivKoIk3LVvPY-Iie8BF-Um7WZgoHE5Y7wP",
+  "sub_account":"Grid",
+  "symbol": "SOL/USD:USD",
+  "exposure_cap":50.0,
+  "step": 25.0
+}

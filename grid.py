@@ -3,7 +3,6 @@
 import ccxt
 import datetime
 import time
-
 import numpy as np
 import simplejson as json
 
