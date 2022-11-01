@@ -146,7 +146,7 @@ main_job = TrendTrader(exchange, config["symbol"], config["amount"], config["upd
 main_job.calculate_desired_pos()
 while True:
     try:
-        if np.mod(datetime.datetime.now().minute, 15) == 0:
+        if np.mod(datetime.datetime.now().minute, 5) == 0:
             print("Loop in :", datetime.datetime.now())
             if datetime.datetime.now().minute == 0:
                 main_job.calculate_desired_pos()
